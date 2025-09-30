@@ -11,8 +11,8 @@ class CFW_Gateway extends WC_Payment_Gateway
     public function __construct()
     {
         $this->id                 = 'cfw_gateway';
-        $this->method_title       = esc_html__('Crytpo Gateway', 'crypto-for-woocommerce');
-        $this->method_description = esc_html__('Redirect to the external gateway to complete the payment.', 'crypto-for-woocommerce');
+        $this->method_title       = esc_html__('Zeno Crypto Gateway', 'crypto-for-woocommerce');
+        $this->method_description = esc_html__('Fast and Secure Crypto Payments for your store.', 'crypto-for-woocommerce');
         $this->has_fields         = true;
         $this->supports           = ['products'];
 
@@ -25,7 +25,7 @@ class CFW_Gateway extends WC_Payment_Gateway
 
         $this->api_key_live  = $this->get_option('api_key_live', '');
         $this->secret_live   = $this->get_option('secret_live', '');
-        $this->test_mode     = true; // Always enabled by default
+        $this->test_mode     = false; // Live mode by default
         $this->debug         = $this->get_option('debug', 'no') === 'yes';
 
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
@@ -53,32 +53,13 @@ class CFW_Gateway extends WC_Payment_Gateway
             ],
         ];
 
-        // Only show wallet field if no valid wallet is configured
-        if (!$this->has_valid_wallet()) {
-            $this->form_fields['wallet_address'] = [
-                'title'       => __('Wallet Address', 'crypto-for-woocommerce'),
-                'type'        => 'text',
-                'placeholder' => __('0x000...000', 'crypto-for-woocommerce'),
-                'description' => sprintf(
-                    // translators: 1: Link to MetaMask Chrome extension, 2: Link to MetaMask Firefox add-on.
-                    __('Wallet address to receive payments. <br><br><strong>Don’t have a wallet?</strong> Download the MetaMask extension (%1$s | %2$s), create your wallet, and start receiving payments.', 'crypto-for-woocommerce'),
-                    '<a href="' . esc_url('https://chrome.google.com/webstore/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn') . '" target="_blank" rel="noreferrer noopener">Chrome</a>',
-                    '<a href="' . esc_url('https://addons.mozilla.org/firefox/addon/ether-metamask/') . '" target="_blank" rel="noreferrer noopener">Firefox</a>'
-                ),
-            ];
-        } else {
-            // Show configured wallet information
-            $wallet_address = $this->get_option('wallet_address', '');
-            $this->form_fields['wallet_info'] = [
-                'title' => __('Configured Wallet', 'crypto-for-woocommerce'),
-                'type'  => 'title',
-                'description' => sprintf(
-                    // translators: %s: configured wallet address.
-                    __('Wallet Address: %s', 'crypto-for-woocommerce'),
-                    $wallet_address
-                ),
-            ];
-        }
+        // API Key field
+        $this->form_fields['api_key_live'] = [
+            'title'       => __('API Key Live', 'crypto-for-woocommerce'),
+            'type'        => 'text',
+            'placeholder' => __('Enter your live API key', 'crypto-for-woocommerce'),
+            'description' => __('Your live API key for processing payments. Contact support to get your API key.', 'crypto-for-woocommerce'),
+        ];
     }
 
 
@@ -90,7 +71,6 @@ class CFW_Gateway extends WC_Payment_Gateway
 
         $enabled          = ('yes' === $this->get_option('enabled', 'no'));
         $title            = trim($this->get_option('title', ''));
-        $wallet_address   = trim($this->get_option('wallet_address', ''));
         $current_api_key  = trim($this->get_option('api_key_live', ''));
         $test_mode        = (bool) $this->test_mode;
 
@@ -98,26 +78,9 @@ class CFW_Gateway extends WC_Payment_Gateway
             $errors[] = esc_html__('The "Title" field is required.', 'crypto-for-woocommerce');
         }
 
-        if (!empty($wallet_address) && empty($current_api_key)) {
-            $store_data = $this->register_store_with_wallet($wallet_address);
-            if ($store_data && isset($store_data['apiKey']) && !empty($store_data['apiKey'])) {
-                $this->update_option('api_key_live', $store_data['apiKey']);
-                $this->api_key_live = $store_data['apiKey'];
-                $current_api_key    = $store_data['apiKey'];
-
-                WC_Admin_Settings::add_message(__('Store registered successfully! API Key has been automatically configured.', 'crypto-for-woocommerce'));
-            } else {
-                $errors[] = esc_html__('Failed to register store with the provided wallet address. Please check the wallet address and try again.', 'crypto-for-woocommerce');
-            }
-        }
-
         if ($enabled) {
-            if (empty($wallet_address) && empty($current_api_key)) {
-                $errors[] = esc_html__('You cannot enable this payment method without a Wallet Address or an API Key.', 'crypto-for-woocommerce');
-            }
-
-            if (!$test_mode && empty($current_api_key)) {
-                $errors[] = esc_html__('You must configure the Live API Key when not in test mode.', 'crypto-for-woocommerce');
+            if (empty($current_api_key)) {
+                $errors[] = esc_html__('You cannot enable this payment method without a Live API Key.', 'crypto-for-woocommerce');
             }
         }
 
@@ -162,51 +125,11 @@ class CFW_Gateway extends WC_Payment_Gateway
         return $this->secret_live;
     }
 
-    private function register_store_with_wallet($wallet_address, $store_name = null, $domain = null)
+
+    private function has_valid_api_key(): bool
     {
-        if (empty($wallet_address)) {
-            return false;
-        }
-
-        $store_name = $store_name ?: get_bloginfo('name');
-        $domain = $domain ?: sanitize_text_field(wp_unslash($_SERVER['HTTP_HOST'] ?? 'localhost'));
-
-        $payload = [
-            'name' => $store_name,
-            'domain' => $domain,
-            'walletAddress' => $wallet_address
-        ];
-
-        $args = [
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ],
-            'body' => wp_json_encode($payload),
-            'timeout' => 25,
-        ];
-
-        $response = wp_remote_post($this->current_endpoint() . '/api/v1/users/store', $args);
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-
-        if (isset($body['apiKey']) && !empty($body['apiKey'])) {
-            return $body;
-        }
-
-        return false;
-    }
-
-    private function has_valid_wallet(): bool
-    {
-        $wallet_address = $this->get_option('wallet_address', '');
         $api_key = $this->get_option('api_key_live', '');
-
-        return !empty($wallet_address) && !empty($api_key);
+        return !empty($api_key);
     }
 
     public function generate_verification_token($order_id)

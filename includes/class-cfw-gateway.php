@@ -49,6 +49,9 @@ class CFW_Gateway extends WC_Payment_Gateway
     //               . esc_html__( 'Manage', 'crypto-for-woocommerce' ) . '</a>',
     // ];
     // }
+    // public get_icon() {
+
+    // }
 
     public function init_form_fields()
     {

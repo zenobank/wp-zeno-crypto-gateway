@@ -31,6 +31,25 @@ class CFW_Gateway extends WC_Payment_Gateway
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
     }
 
+    public function needs_setup(){
+        return !$this->has_valid_api_key();
+    }
+    // public function get_action_links() {
+    // $settings_url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=' . $this->id );
+
+    // if ( $this->needs_setup() ) {
+    //     return [
+    //         'setup' => '<a class="button-primary" href="' . esc_url( $settings_url ) . '">'
+    //                  . esc_html__( 'Complete setup', 'crypto-for-woocommerce' ) . '</a>',
+    //     ];
+    // }
+
+    // return [
+    //     'manage' => '<a href="' . esc_url( $settings_url ) . '">'
+    //               . esc_html__( 'Manage', 'crypto-for-woocommerce' ) . '</a>',
+    // ];
+    // }
+
     public function init_form_fields()
     {
         $this->form_fields = [
@@ -39,6 +58,12 @@ class CFW_Gateway extends WC_Payment_Gateway
                 'type'    => 'checkbox',
                 'label'   => __('Enable Crypto Gateway', 'crypto-for-woocommerce'),
                 'default' => 'no',
+            ],
+            'api_key_live' => [
+                'title'       => __('API Key Live', 'crypto-for-woocommerce'),
+                'type'        => 'text',
+                'placeholder' => __('Enter your live API key', 'crypto-for-woocommerce'),
+                'description' => __('Your live API key for processing payments. Contact support to get your API key.', 'crypto-for-woocommerce'),
             ],
             'title' => [
                 'title'       => __('Title', 'crypto-for-woocommerce'),
@@ -53,13 +78,7 @@ class CFW_Gateway extends WC_Payment_Gateway
             ],
         ];
 
-        // API Key field
-        $this->form_fields['api_key_live'] = [
-            'title'       => __('API Key Live', 'crypto-for-woocommerce'),
-            'type'        => 'text',
-            'placeholder' => __('Enter your live API key', 'crypto-for-woocommerce'),
-            'description' => __('Your live API key for processing payments. Contact support to get your API key.', 'crypto-for-woocommerce'),
-        ];
+     
     }
 
 
